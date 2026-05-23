@@ -19,7 +19,7 @@ class GeminiCoachService:
     ) -> AsyncGenerator[str, None]:
         """
         Loads database conversation state, maps a manual system instructions matrix,
-        and streams token arrays sequentially using SSE framing parameters.
+        and streams token arrays sequentially using true asynchronous SDK streaming.
         """
         
         # 1. Establish elite fitness persona boundaries
@@ -34,14 +34,18 @@ class GeminiCoachService:
         contents_payload = []
         
         # Hydrate array with past MongoDB conversations and force strict role compliance
-        for msg in chat_session.messages:
-            sdk_role = "user" if msg.role in ["user", "human"] else "model"
-            contents_payload.append(
-                types.Content(
-                    role=sdk_role,
-                    parts=[types.Part.from_text(text=msg.content)]
+        if chat_session.messages:
+            for msg in chat_session.messages:
+                # Fallback safety validation to ignore corrupt or empty historical elements
+                if not msg.content or not msg.content.strip():
+                    continue
+                sdk_role = "user" if msg.role in ["user", "human"] else "model"
+                contents_payload.append(
+                    types.Content(
+                        role=sdk_role,
+                        parts=[types.Part.from_text(text=msg.content)]
+                    )
                 )
-            )
             
         # 3. Append the incoming prompt to the very end of the array sequence
         contents_payload.append(
@@ -58,8 +62,8 @@ class GeminiCoachService:
         ai_response_chunks = []
 
         try:
-            # 5. Connect directly via standalone stateless stream generator 
-            response_stream = self.client.models.generate_content_stream(
+            # 5. 🟢 CRITICAL FIXED LINE: Call the true async engine stream wrapper ('aio.models') with await
+            response_stream = await self.client.aio.models.generate_content_stream(
                 model=self.model_name,
                 contents=contents_payload,
                 config=types.GenerateContentConfig(
@@ -68,14 +72,12 @@ class GeminiCoachService:
                 )
             )
 
-            # 6. Stream tokens wrapped in Server-Sent Events formatting to flush network proxies
-            for chunk in response_stream:
+            # 6. 🟢 CRITICAL FIXED LINE: Use 'async for' to consume the asynchronous network generator
+            async for chunk in response_stream:
                 if chunk.text:
                     ai_response_chunks.append(chunk.text)
                     # Prepend 'data: ' and append double newlines to force-flush the streaming network buffer
                     yield f"data: {chunk.text}\n\n"
-                    # Forced short async yield gives thread processing room
-                    await asyncio.sleep(0.01)
 
             # 7. Stitch components and update database collection
             full_ai_response = "".join(ai_response_chunks)
@@ -88,4 +90,4 @@ class GeminiCoachService:
 
         except Exception as e:
             print(f"❌ Error during active Coach Apex core model generation stream: {e}")
-            yield "data:  [Coach Apex connectivity breakdown occurred. Re-transmitting statement context...]\n\n"
+            yield f"data: [Coach Apex connectivity breakdown occurred: {str(e)}]\n\n"
