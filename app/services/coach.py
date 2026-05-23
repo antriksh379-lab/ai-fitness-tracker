@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 from typing import AsyncGenerator
+import asyncio
 from google import genai
 from google.genai import types
 
@@ -39,8 +40,9 @@ class GeminiCoachService:
             "Keep answers concise, direct, and focused on actionable metrics. Never give medical diagnoses."
         )
 
-        # 3. Spin up an active, stateful SDK chat instance (Awaited correctly)
-        sdk_chat = await self.client.aio.chats.create(
+        # 3. Spin up an active, stateful SDK chat instance
+        # 🟢 FIXED: Removed the invalid 'await' keyword. chats.create is a synchronous manager setup.
+        sdk_chat = self.client.aio.chats.create(
             model=self.model_name,
             history=sdk_history,
             config=types.GenerateContentConfig(
@@ -57,11 +59,14 @@ class GeminiCoachService:
         ai_response_chunks = []
 
         try:
-            # 5. Initiate the asynchronous streaming transport loop (Removed the extra 'await')
+            # 5. Initiate the asynchronous streaming transport loop
             async for chunk in sdk_chat.send_message_stream(user_message):
                 if chunk.text:
                     ai_response_chunks.append(chunk.text)
                     yield chunk.text  # Immediately stream text chunks back to client
+                    
+                    # Short non-blocking sleep keeps the execution loop fluid
+                    await asyncio.sleep(0.01)
 
             # 6. Stitch response pieces together and commit to MongoDB
             full_ai_response = "".join(ai_response_chunks)
