@@ -127,6 +127,9 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
+# 🟢 GLOBAL VARIABLE DECLARATION: Avoid cross-column name scope leaks
+athlete_id = st.text_input("👤 Athlete System Profile Key", value="athlete_test_99", key="global_athlete_id")
+
 # Orchestrate Screen Grid Canvas Split
 col1, col2 = st.columns([1, 1], gap="large")
 
@@ -139,7 +142,6 @@ with col1:
     
     with st.container(border=False):
         st.markdown('<div class="athlete-card">', unsafe_allow_html=True)
-        athlete_id = st.text_input("👤 Athlete System Profile Key", value="athlete_test_99", key="global_athlete_id")
         
         raw_input_text = st.text_area(
             "🏋️‍♂️ Post-Workout Shorthand Stream",
@@ -163,16 +165,13 @@ with col1:
                         data = response.json()
                         st.success("✔️ Document integrated successfully with MongoDB cluster.")
                         
-                        # Render Dynamic Metric Display Badge for Inferred Energy State
                         energy = data.get("energy_rating")
                         if energy:
                             st.metric(label="📊 Computed Athlete Energy Level", value=f"{energy} / 5")
                         
-                        # AI Feedback Block Layout
                         st.markdown("### 🤖 Coach Apex Critique")
                         st.info(data.get('coach_notes'))
                         
-                        # Schema Node Layout Render
                         st.markdown("### 🧬 Isolated Kinetic Schema Objects")
                         for exercise in data.get("exercises", []):
                             st.markdown(f"""
@@ -197,13 +196,11 @@ with col2:
     st.markdown("<h2 style='color:#ffffff; margin-bottom:5px;'>💬 Predictive Coach Stream</h2>", unsafe_allow_html=True)
     st.markdown("<p style='color:#6b7280; margin-bottom:20px;'>Query kinetic trends or compute optimization logic models dynamically.</p>", unsafe_allow_html=True)
     
-    # State Memory Array Cache Checks
     if "session_id" not in st.session_state:
         st.session_state.session_id = None
     if "chat_history" not in st.session_state:
         st.session_state.chat_history = []
 
-    # Dynamic Context Controls Card Panel
     st.markdown('<div class="athlete-card">', unsafe_allow_html=True)
     if not st.session_state.session_id:
         st.markdown("<p style='color:#9ca3af; margin:0 0 10px 0;'>Memory pipeline offline. Initialize a session tracking frame to begin context tracking.</p>", unsafe_allow_html=True)
@@ -239,7 +236,6 @@ with col2:
 
     st.markdown("---")
 
-    # Scroll Box Render Mapping Framework
     chat_container = st.container(height=400)
     with chat_container:
         if not st.session_state.chat_history:
@@ -249,18 +245,15 @@ with col2:
                 with st.chat_message(role):
                     st.write(text)
 
-    # Input capture bar setup
     if chat_prompt := st.chat_input("Ask Coach Apex a strategic question..."):
         if not st.session_state.session_id:
             st.error("Cannot broadcast prompt vector across empty system memory layers. Open the gateway above.")
         else:
-            # Render user text vector block immediately
             st.session_state.chat_history.append(("user", chat_prompt))
             with chat_container:
                 with st.chat_message("user"):
                     st.write(chat_prompt)
 
-            # Fire request to streaming context channels
             with chat_container:
                 with st.chat_message("assistant"):
                     response_placeholder = st.empty()
@@ -278,31 +271,27 @@ with col2:
                                 ) as response:
                                     
                                     if response.status_code in [200, 201]:
-                                        # 🟢 FIXED: Iterate over raw byte arrays to bypass line-encoding blocks
                                         for chunk in response.iter_bytes():
                                             if chunk:
                                                 decoded_text = chunk.decode("utf-8", errors="ignore")
                                                 
-                                                # Strip any accidental Server-Sent Event framing prefixes if found
-                                                if decoded_text.startswith("data:"):
+                                                # Robust clean logic for SSE markers anywhere in the chunk buffer
+                                                if "data:" in decoded_text:
                                                     decoded_text = decoded_text.replace("data:", "")
-                                                    
+                                                
                                                 full_response += decoded_text
                                                 
-                                                # Continuously stream text chunks as they manifest
                                                 if full_response.strip():
                                                     response_placeholder.markdown(full_response + "▌")
                                         
-                                        # 🟢 FALLBACK: Guard if the network closed cleanly but returned zero characters
                                         if not full_response.strip():
-                                            full_response = "🚀 Stream pipeline established and synchronized with MongoDB. Waiting for engine text generation parameters..."
+                                            full_response = "🚀 Stream pipeline established. Waiting for engine text generation parameters..."
                                         
                                         response_placeholder.markdown(full_response)
                                         st.session_state.chat_history.append(("assistant", full_response))
                                     else:
                                         st.error(f"❌ Streaming Error. Code: {response.status_code}")
                         except Exception as e:
-                            # Safely show partial responses if the socket closed mid-flight
                             if full_response.strip():
                                 response_placeholder.markdown(full_response)
                                 st.session_state.chat_history.append(("assistant", full_response))
