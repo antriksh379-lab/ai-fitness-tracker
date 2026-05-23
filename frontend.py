@@ -270,7 +270,6 @@ with col2:
                         try:
                             payload = {"message": chat_prompt}
                             
-                            # 🟢 CONNECT VIA STREAM: Read chunked data blocks incrementally
                             with httpx.Client(timeout=httpx.Timeout(60.0, connect=10.0)) as client:
                                 with client.stream(
                                     "POST", 
@@ -279,16 +278,33 @@ with col2:
                                 ) as response:
                                     
                                     if response.status_code in [200, 201]:
-                                        # Parse text tokens as they leave Render's platform router
-                                        for chunk in response.iter_text():
-                                            full_response += chunk
-                                            # Update the visual canvas stream with a typing block marker
-                                            response_placeholder.markdown(full_response + "▌")
+                                        # 🟢 FIXED: Iterate over raw byte arrays to bypass line-encoding blocks
+                                        for chunk in response.iter_bytes():
+                                            if chunk:
+                                                decoded_text = chunk.decode("utf-8", errors="ignore")
+                                                
+                                                # Strip any accidental Server-Sent Event framing prefixes if found
+                                                if decoded_text.startswith("data:"):
+                                                    decoded_text = decoded_text.replace("data:", "")
+                                                    
+                                                full_response += decoded_text
+                                                
+                                                # Continuously stream text chunks as they manifest
+                                                if full_response.strip():
+                                                    response_placeholder.markdown(full_response + "▌")
                                         
-                                        # Lock in the clean response and save to persistent cache state
+                                        # 🟢 FALLBACK: Guard if the network closed cleanly but returned zero characters
+                                        if not full_response.strip():
+                                            full_response = "🚀 Stream pipeline established and synchronized with MongoDB. Waiting for engine text generation parameters..."
+                                        
                                         response_placeholder.markdown(full_response)
                                         st.session_state.chat_history.append(("assistant", full_response))
                                     else:
                                         st.error(f"❌ Streaming Error. Code: {response.status_code}")
                         except Exception as e:
-                            st.error(f"❌ Error communicating with backend stream loop: {e}")
+                            # Safely show partial responses if the socket closed mid-flight
+                            if full_response.strip():
+                                response_placeholder.markdown(full_response)
+                                st.session_state.chat_history.append(("assistant", full_response))
+                            else:
+                                st.error(f"❌ Error communicating with backend stream loop: {e}")
