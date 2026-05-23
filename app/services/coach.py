@@ -18,21 +18,11 @@ class GeminiCoachService:
         self, chat_session: ChatSession, user_message: str
     ) -> AsyncGenerator[str, None]:
         """
-        Loads database conversation state, seeds Gemini's history matrix, 
-        streams the response back chunk-by-chunk, and updates MongoDB.
+        Loads database conversation state, maps a manual system instructions matrix,
+        and streams token arrays sequentially without mid-layer container blocking.
         """
         
-        # 1. Map MongoDB historical schemas into the required Google SDK Content layout
-        sdk_history = []
-        for msg in chat_session.messages:
-            sdk_history.append(
-                types.Content(
-                    role=msg.role,
-                    parts=[types.Part.from_text(text=msg.content)]
-                )
-            )
-
-        # 2. Establish elite fitness persona boundaries
+        # 1. Establish elite fitness persona boundaries
         system_prompt = (
             "You are 'Coach Apex', an elite, empathetic, yet highly candid fitness and nutrition coach. "
             "Your goal is to guide the user toward their athletic goals with evidence-based principles. "
@@ -40,44 +30,62 @@ class GeminiCoachService:
             "Keep answers concise, direct, and focused on actionable metrics. Never give medical diagnoses."
         )
 
-        # 3. Spin up an active, stateful SDK chat instance
-        # 🟢 FIXED: Removed the invalid 'await' keyword. chats.create is a synchronous manager setup.
-        sdk_chat = self.client.aio.chats.create(
-            model=self.model_name,
-            history=sdk_history,
-            config=types.GenerateContentConfig(
-                system_instruction=system_prompt,
-                temperature=0.7,  # Slight elevation allows fluid, human-like dialogue variance
+        # 2. Build explicit content historical array blocks manually
+        contents_payload = []
+        
+        # Hydrate array with past MongoDB conversations and force strict role compliance
+        for msg in chat_session.messages:
+            sdk_role = "user" if msg.role in ["user", "human"] else "model"
+            contents_payload.append(
+                types.Content(
+                    role=sdk_role,
+                    parts=[types.Part.from_text(text=msg.content)]
+                )
+            )
+            
+        # 3. Append the incoming prompt to the very end of the array sequence
+        contents_payload.append(
+            types.Content(
+                role="user",
+                parts=[types.Part.from_text(text=user_message)]
             )
         )
 
-        # 4. Record the user's incoming statement locally immediately (Timezone aware)
+        # 4. Commit user prompt message locally to historical memory
         new_user_msg = ChatMessage(role="user", content=user_message, timestamp=get_utc_now())
         chat_session.messages.append(new_user_msg)
         
-        # Accumulator array to capture pieces of the streaming response
         ai_response_chunks = []
 
         try:
-            # 5. Initiate the asynchronous streaming transport loop
-            async for chunk in sdk_chat.send_message_stream(user_message):
+            # 5. Connect directly via standalone stateless stream generator 
+            # This completely avoids chat context object lockups
+            response_stream = self.client.models.generate_content_stream(
+                model=self.model_name,
+                contents=contents_payload,
+                config=types.GenerateContentConfig(
+                    system_instruction=system_prompt,
+                    temperature=0.7
+                )
+            )
+
+            # 6. Stream tokens to transport gates instantly
+            for chunk in response_stream:
                 if chunk.text:
                     ai_response_chunks.append(chunk.text)
-                    yield chunk.text  # Immediately stream text chunks back to client
-                    
-                    # Short non-blocking sleep keeps the execution loop fluid
+                    yield chunk.text
+                    # Forced short async yield gives thread processing room
                     await asyncio.sleep(0.01)
 
-            # 6. Stitch response pieces together and commit to MongoDB
+            # 7. Stitch components and update database collection
             full_ai_response = "".join(ai_response_chunks)
             new_ai_msg = ChatMessage(role="model", content=full_ai_response, timestamp=get_utc_now())
             
             chat_session.messages.append(new_ai_msg)
             chat_session.last_updated = get_utc_now()
             
-            # Save the updated conversation session document to MongoDB via Beanie
             await chat_session.save()
 
         except Exception as e:
-            print(f"❌ Error during active Coach Apex chat execution stream: {e}")
-            yield " [Coach Apex connection anomaly detected. Please try re-transmitting.]"
+            print(f"❌ Error during active Coach Apex core model generation stream: {e}")
+            yield " [Coach Apex connectivity breakdown occurred. Re-transmitting statement context...]"
