@@ -127,7 +127,7 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
-# GLOBAL VARIABLE DECLARATION: Declared high up to avoid cross-column scope leaks
+# GLOBAL VARIABLE DECLARATION: Avoid cross-column scope leaks
 athlete_id = st.text_input("👤 Athlete System Profile Key", value="athlete_test_99", key="global_athlete_id")
 
 # Orchestrate Screen Grid Canvas Split
@@ -271,23 +271,27 @@ with col2:
                                 ) as response:
                                     
                                     if response.status_code in [200, 201]:
+                                        buffer = ""
+                                        
                                         for chunk in response.iter_bytes():
                                             if chunk:
-                                                decoded_text = chunk.decode("utf-8", errors="ignore")
+                                                buffer += chunk.decode("utf-8", errors="ignore")
                                                 
-                                                # Clean raw chunk buffer using explicit line processing for SSE frames
-                                                lines = decoded_text.split("\n")
-                                                for line in lines:
-                                                    if line.startswith("data: "):
-                                                        token = line[6:]
-                                                        full_response += token
+                                                # Use raw rolling splits to bypass mid-word network chunk breaks cleanly
+                                                while "\n\n" in buffer:
+                                                    line_block, buffer = buffer.split("\n\n", 1)
+                                                    
+                                                    for line in line_block.split("\n"):
+                                                        line = line.box_clean = line.strip()
+                                                        if line.startswith("data:"):
+                                                            token = line[5:].lstrip()
+                                                            full_response += token
                                                 
-                                                # Continuously update the layout text frame
                                                 if full_response.strip():
                                                     response_placeholder.markdown(full_response + "▌")
                                         
                                         if not full_response.strip():
-                                            full_response = "🚀 Stream pipeline established. Waiting for engine text generation parameters..."
+                                            full_response = "🚀 Stream pipeline synchronized cleanly, but text extraction failed. Review server log trace."
                                         
                                         response_placeholder.markdown(full_response)
                                         st.session_state.chat_history.append(("assistant", full_response))
