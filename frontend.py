@@ -277,22 +277,22 @@ with col2:
                                             if chunk:
                                                 buffer += chunk.decode("utf-8", errors="ignore")
                                                 
-                                                # Use raw rolling splits to bypass mid-word network chunk breaks cleanly
+                                                # Process double-newline separated SSE frames safely
                                                 while "\n\n" in buffer:
                                                     line_block, buffer = buffer.split("\n\n", 1)
                                                     
                                                     for line in line_block.split("\n"):
-                                                        line = line.box_clean = line.strip()
-                                                        if line.startswith("data:"):
-                                                            token = line[5:].lstrip()
+                                                        cleaned_line = line.strip()
+                                                        if cleaned_line.startswith("data:"):
+                                                            # Extract the token safely after the prefix
+                                                            token = cleaned_line[5:].lstrip()
                                                             full_response += token
                                                 
+                                                # Print tokens dynamically onto the Streamlit canvas
                                                 if full_response.strip():
                                                     response_placeholder.markdown(full_response + "▌")
                                         
-                                        if not full_response.strip():
-                                            full_response = "🚀 Stream pipeline synchronized cleanly, but text extraction failed. Review server log trace."
-                                        
+                                        # final sweep if the stream finishes cleanly
                                         response_placeholder.markdown(full_response)
                                         st.session_state.chat_history.append(("assistant", full_response))
                                     else:
