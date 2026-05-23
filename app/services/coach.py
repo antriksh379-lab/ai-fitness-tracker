@@ -19,7 +19,7 @@ class GeminiCoachService:
     ) -> AsyncGenerator[str, None]:
         """
         Loads database conversation state, maps a manual system instructions matrix,
-        and streams token arrays sequentially without mid-layer container blocking.
+        and streams token arrays sequentially using SSE framing parameters.
         """
         
         # 1. Establish elite fitness persona boundaries
@@ -59,7 +59,6 @@ class GeminiCoachService:
 
         try:
             # 5. Connect directly via standalone stateless stream generator 
-            # This completely avoids chat context object lockups
             response_stream = self.client.models.generate_content_stream(
                 model=self.model_name,
                 contents=contents_payload,
@@ -69,11 +68,12 @@ class GeminiCoachService:
                 )
             )
 
-            # 6. Stream tokens to transport gates instantly
+            # 6. Stream tokens wrapped in Server-Sent Events formatting to flush network proxies
             for chunk in response_stream:
                 if chunk.text:
                     ai_response_chunks.append(chunk.text)
-                    yield chunk.text
+                    # Prepend 'data: ' and append double newlines to force-flush the streaming network buffer
+                    yield f"data: {chunk.text}\n\n"
                     # Forced short async yield gives thread processing room
                     await asyncio.sleep(0.01)
 
@@ -88,4 +88,4 @@ class GeminiCoachService:
 
         except Exception as e:
             print(f"❌ Error during active Coach Apex core model generation stream: {e}")
-            yield " [Coach Apex connectivity breakdown occurred. Re-transmitting statement context...]"
+            yield "data:  [Coach Apex connectivity breakdown occurred. Re-transmitting statement context...]\n\n"
