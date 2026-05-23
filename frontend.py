@@ -127,7 +127,7 @@ st.markdown("""
     </div>
 """, unsafe_allow_html=True)
 
-# 🟢 GLOBAL VARIABLE DECLARATION: Avoid cross-column name scope leaks
+# GLOBAL VARIABLE DECLARATION: Declared high up to avoid cross-column scope leaks
 athlete_id = st.text_input("👤 Athlete System Profile Key", value="athlete_test_99", key="global_athlete_id")
 
 # Orchestrate Screen Grid Canvas Split
@@ -275,12 +275,14 @@ with col2:
                                             if chunk:
                                                 decoded_text = chunk.decode("utf-8", errors="ignore")
                                                 
-                                                # Robust clean logic for SSE markers anywhere in the chunk buffer
-                                                if "data:" in decoded_text:
-                                                    decoded_text = decoded_text.replace("data:", "")
+                                                # Clean raw chunk buffer using explicit line processing for SSE frames
+                                                lines = decoded_text.split("\n")
+                                                for line in lines:
+                                                    if line.startswith("data: "):
+                                                        token = line[6:]
+                                                        full_response += token
                                                 
-                                                full_response += decoded_text
-                                                
+                                                # Continuously update the layout text frame
                                                 if full_response.strip():
                                                     response_placeholder.markdown(full_response + "▌")
                                         
